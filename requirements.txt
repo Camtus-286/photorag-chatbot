@@ -1,0 +1,24 @@
+# Tìm kiếm (CLIP + BM25 + Qdrant)
+torch
+transformers
+qdrant-client
+rank_bm25
+nltk
+numpy
+pandas
+pillow
+
+# API và giao diện
+fastapi
+uvicorn
+streamlit
+requests
+
+# Chatbot (gọi LLM qua API tương thích OpenAI, vd. Groq hoặc Ollama)
+openai
+python-dotenv
+
+# Notebook
+ipykernel
+pyarrow
+tqdm
