@@ -11,13 +11,6 @@ Tìm kiếm ảnh trên Flickr8k bằng CLIP + BM25 + Qdrant, kèm một chatbot
 - `notebooks/` — EDA, tạo ground truth, đo baseline và ablation.
 
 ## Cấu hình LLM
-Chatbot gọi LLM qua API tương thích OpenAI. Tạo file `.env` ở thư mục gốc (file này không được đẩy lên git):
-
-```
-LLM_BASE_URL=https://api.groq.com/openai/v1
-LLM_API_KEY=<key của bạn>
-LLM_MODEL=openai/gpt-oss-120b
-```
 
 Bản demo dùng gói miễn phí của Groq. Muốn chạy LLM ngay trên máy thì đổi ba dòng trên sang Ollama (`http://localhost:11434/v1`).
 
