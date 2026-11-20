@@ -1,10 +1,10 @@
-"""API tìm ảnh: nhận câu query qua HTTP, gọi search.py, trả kết quả dạng JSON.
+"""API của PhotoRAG: nhận câu hỏi qua HTTP, gọi search.py / chat.py, trả kết quả dạng JSON.
 
 Chạy (từ thư mục flickr-search/, Qdrant phải đang bật):
-    uvicorn app.api:app
+    python3 -m uvicorn app.api:app
 Thử nhanh:
-    curl -X POST localhost:8000/search -H "Content-Type: application/json" \
-         -d '{"query": "dogs playing in the snow", "mode": "image", "k": 5}'
+    curl -X POST localhost:8000/ask -H "Content-Type: application/json" \
+         -d '{"question": "show me 3 photos of dogs playing in the snow"}'
 Xem tài liệu API tự sinh: http://localhost:8000/docs
 """
 from contextlib import asynccontextmanager
@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.search import Searcher
 from app.chat import Chatbot
 
+
 @asynccontextmanager
 async def lifespan(app):
     # Nạp CLIP + BM25 + nối Qdrant MỘT lần khi server khởi động (mất vài giây),
@@ -24,7 +25,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="Flickr Search API", lifespan=lifespan)
+app = FastAPI(title="PhotoRAG API", lifespan=lifespan)
 
 
 class SearchRequest(BaseModel):
@@ -32,6 +33,13 @@ class SearchRequest(BaseModel):
     query: str
     mode: str = "image"         # image (ảnh kèm caption) | caption (chỉ caption); luôn tìm bằng hybrid
     k: int = 10                 # số ảnh trả về, 1–100
+
+
+class AskRequest(BaseModel):
+    """Body của POST /ask: một lượt chat."""
+    question: str
+    history: list[dict] = []    # các tin trước: [{"role": "user"/"assistant", "content": ...}], không kèm caption
+    image_ids: list[str] = []   # ảnh đang hiện trên giao diện, theo đúng thứ tự; rỗng nếu chưa có
 
 
 @app.get("/health")
@@ -42,7 +50,7 @@ def health():
 
 @app.post("/search")
 def search(req: SearchRequest):
-    """Tìm top-k ảnh cho câu query.
+    """Tìm top-k ảnh cho câu query, không qua LLM.
 
     - Input sai (rỗng, không phải tiếng Anh, quá dài, mode/k sai): search.py raise ValueError
       → trả HTTP 400 kèm thông báo, để UI hiện cho người dùng.
@@ -53,30 +61,16 @@ def search(req: SearchRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"query": req.query, "mode": req.mode, "k": req.k, "results": results}
-class ChatRequest(BaseModel):
-    """Body của POST /chat."""
-    question: str
-    k: int = 5                  # số ảnh đưa cho LLM đọc caption
 
 
-@app.post("/chat")
-def chat(req: ChatRequest):
-    """Hỏi chatbot: trả {answer, results}. Câu hỏi sai (rỗng, không phải tiếng Anh, quá dài) → HTTP 400."""
+@app.post("/ask")
+def ask(req: AskRequest):
+    """Một lượt chat. Router tự quyết tìm ảnh mới / hỏi ảnh đang hiện / trò chuyện, và đọc số ảnh từ câu hỏi.
+
+    Trả {answer, route, query, results, image_ids}; query và results chỉ có khi route = "search".
+    Câu hỏi sai (rỗng, không phải tiếng Anh, quá dài, image_id lạ) → HTTP 400.
+    """
     try:
-        return app.state.chatbot.chat(req.question, k=req.k)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-class FollowupRequest(BaseModel):
-    """Body của POST /followup."""
-    question: str
-    image_ids: list[str]        # các ảnh đang hiện trên giao diện, theo đúng thứ tự
-    history: list[dict] = []    # các lượt hỏi tiếp trước đó: [{"question": ..., "answer": ...}]
-
-
-@app.post("/followup")
-def followup(req: FollowupRequest):
-    """Hỏi tiếp về các ảnh đang hiện, không tìm lại. Trả {answer}. Input sai → HTTP 400."""
-    try:
-        return app.state.chatbot.followup(req.question, req.image_ids, req.history)
+        return app.state.chatbot.ask(req.question, history=req.history, image_ids=req.image_ids)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
